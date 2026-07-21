@@ -106,13 +106,13 @@ The factory runs on the first `Get` and exactly once, no matter how many gorouti
 ctx, cancel := context.WithCancel(context.Background())
 cancel()
 
-_, err := p.Get(ctx)          // context.Canceled — this caller gave up
+_, err := p.Get(ctx)          // wraps context.Canceled — this caller gave up
                               // initialization is still running
 
 value, err := p.Get(context.Background())   // still gets the value
 ```
 
-`Get` returns `context.Cause(ctx)`, so a `context.WithCancelCause` reason reaches the caller intact. If initialization completes at the same instant the caller's context dies, the completed result wins.
+`Get` wraps `context.Cause(ctx)`, so a `context.WithCancelCause` reason reaches the caller through `errors.Is` and `errors.As`. If initialization completes at the same instant the caller's context dies, the completed result wins.
 
 ### Retry, then give up
 
@@ -320,7 +320,7 @@ Returns the shared value, starting initialization on first call and blocking unt
 | --- | --- |
 | Success | the shared value, `nil` |
 | Initialization failed | the **zero** `T`, an `*InitError` |
-| Caller's context ended first | the **zero** `T`, `context.Cause(ctx)` |
+| Caller's context ended first | the **zero** `T`, an error wrapping `context.Cause(ctx)` |
 | Factory panicked | re-panics with the factory's panic value |
 
 Panics if `ctx` is nil, or if called on a zero-value `Provider`.

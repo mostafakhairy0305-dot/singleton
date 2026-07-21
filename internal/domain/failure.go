@@ -24,20 +24,24 @@ const (
 	FailureCanceled
 )
 
+// chainCapacity is how many errors an [InitError] can unwrap to: the factory
+// error and the retry policy's stop condition.
+const chainCapacity = 2
+
 // String returns a short human-readable description of r.
 func (r FailureReason) String() string {
-	switch r {
-	case FailurePermanent:
-		return "permanent failure"
-	case FailureExhausted:
-		return "retries exhausted"
-	case FailureTimedOut:
-		return "initialization timed out"
-	case FailureCanceled:
-		return "initialization canceled"
-	default:
+	names := [...]string{
+		FailurePermanent: "permanent failure",
+		FailureExhausted: "retries exhausted",
+		FailureTimedOut:  "initialization timed out",
+		FailureCanceled:  "initialization canceled",
+	}
+
+	if int(r) >= len(names) || names[r] == "" {
 		return "initialization failed"
 	}
+
+	return names[r]
 }
 
 // InitError reports that shared initialization failed.
@@ -71,9 +75,10 @@ func NewInitError(reason FailureReason, err, cause error) *InitError {
 	initErr := &InitError{
 		Reason: reason,
 		Err:    err,
+		chain:  nil,
 	}
 
-	chain := make([]error, 0, 2)
+	chain := make([]error, 0, chainCapacity)
 
 	if err != nil {
 		chain = append(chain, err)

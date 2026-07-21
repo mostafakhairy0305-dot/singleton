@@ -67,8 +67,9 @@ type Factory[T any] = ports.Operation[T]
 //
 // Get waits for and returns the shared value, starting initialization on the
 // first call and blocking until it settles. It returns the zero T and an
-// [InitError] if initialization failed, or the zero T and context.Cause(ctx) if
-// the caller's context ended first. It re-panics with the factory's panic value
+// [InitError] if initialization failed, or the zero T and an error wrapping
+// context.Cause(ctx) if the caller's context ended first, which errors.Is
+// matches against the cause. It re-panics with the factory's panic value
 // if the factory panicked, and panics if ctx is nil or if the Provider is the
 // zero value. A failed initialization is cached and returned to every later
 // caller until Reset is called.
@@ -149,6 +150,11 @@ const (
 //	}
 type RetryEvent = domain.RetryEvent
 
+var (
+	errNilFactory    = errors.New("singleton: factory is nil")
+	errInvalidOption = errors.New("singleton: invalid option")
+)
+
 // Interface is the behaviour [Provider] implements.
 //
 // Depend on it in consumers that need to substitute a fake.
@@ -167,7 +173,11 @@ type Interface[T any] interface {
 // errors.Is and errors.As, but the concrete type returned is internal and
 // cannot be type-asserted from outside this package.
 func Permanent(err error) error {
-	return domain.Permanent(err)
+	if err == nil {
+		return nil
+	}
+
+	return &domain.PermanentError{Err: err}
 }
 
 // New creates a lazy singleton provider.
@@ -182,17 +192,18 @@ func New[T any](
 	options ...Option,
 ) (*Provider[T], error) {
 	if factory == nil {
-		return nil, errors.New("singleton: factory is nil")
+		return nil, errNilFactory
 	}
 
 	cfg := defaultConfig()
 
 	for _, option := range options {
 		if option.apply == nil {
-			return nil, errors.New("singleton: invalid option")
+			return nil, errInvalidOption
 		}
 
-		if err := option.apply(&cfg); err != nil {
+		err := option.apply(&cfg)
+		if err != nil {
 			return nil, err
 		}
 	}

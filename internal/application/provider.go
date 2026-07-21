@@ -6,6 +6,7 @@ package application
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"sync/atomic"
 
@@ -29,10 +30,11 @@ func NewProvider[T any](
 	factory ports.Operation[T],
 	retrier ports.Retrier[T],
 ) *Provider[T] {
-	return &Provider[T]{
-		factory: factory,
-		retrier: retrier,
-	}
+	provider := new(Provider[T])
+	provider.factory = factory
+	provider.retrier = retrier
+
+	return provider
 }
 
 // Get waits for and returns the shared value, starting initialization on the
@@ -43,33 +45,27 @@ func NewProvider[T any](
 // singleton for the entire process. A failed initialization is cached and
 // returned to every later caller until [Provider.Reset] is called.
 //
-// Get returns the zero T with context.Cause(ctx) if the caller's context ends
-// before initialization settles, and re-panics with the factory's panic value
-// if the factory panicked. It panics if ctx is nil or if the Provider is the
-// zero value.
+// Get returns the zero T with an error wrapping context.Cause(ctx) if the
+// caller's context ends before initialization settles, and re-panics with the
+// factory's panic value if the factory panicked. It panics if ctx is nil or if
+// the Provider is the zero value.
 func (p *Provider[T]) Get(ctx context.Context) (T, error) {
 	if ctx == nil {
 		panic("singleton: nil context")
 	}
 
-	s := p.load()
+	current := p.load()
 
-	if s.settled.Load() {
-		return s.result()
+	if current.settled.Load() {
+		return current.result()
 	}
 
 	select {
-	case <-s.done:
-		return s.result()
+	case <-current.done:
+		return current.result()
 
 	case <-ctx.Done():
-		if s.settled.Load() {
-			return s.result()
-		}
-
-		var zero T
-
-		return zero, context.Cause(ctx)
+		return current.abandon(ctx)
 	}
 }
 
@@ -83,45 +79,44 @@ func (p *Provider[T]) Reset() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	s := p.current.Load()
-	if s == nil {
+	current := p.current.Load()
+	if current == nil {
 		return
 	}
 
-	if !s.settled.Load() {
+	if !current.settled.Load() {
 		return
 	}
 
-	if s.panicked || s.err != nil {
+	if current.panicked || current.err != nil {
 		p.current.Store(nil)
 	}
 }
 
 func (p *Provider[T]) load() *state[T] {
-	if s := p.current.Load(); s != nil {
-		return s
+	if current := p.current.Load(); current != nil {
+		return current
 	}
 
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	if s := p.current.Load(); s != nil {
-		return s
+	if current := p.current.Load(); current != nil {
+		return current
 	}
 
 	if p.factory == nil {
 		panic("singleton: Provider must be created with New or MustNew")
 	}
 
-	s := &state[T]{
-		done: make(chan struct{}),
-	}
+	current := new(state[T])
+	current.done = make(chan struct{})
 
-	p.current.Store(s)
+	p.current.Store(current)
 
-	go p.initialize(s)
+	go p.initialize(current)
 
-	return s
+	return current
 }
 
 type state[T any] struct {
@@ -143,23 +138,42 @@ func (s *state[T]) result() (T, error) {
 	return s.value, s.err
 }
 
-func (p *Provider[T]) initialize(s *state[T]) {
+// abandon reports why this caller stopped waiting, unless initialization
+// settled in the same instant the caller's context ended.
+//
+// The error wraps context.Cause(ctx), so a context.WithCancelCause reason
+// stays reachable through errors.Is and errors.As. It describes the caller's
+// own context rather than the singleton, which keeps initializing.
+func (s *state[T]) abandon(ctx context.Context) (T, error) {
+	if s.settled.Load() {
+		return s.result()
+	}
+
+	var zero T
+
+	return zero, fmt.Errorf(
+		"singleton: waiting for initialization: %w",
+		context.Cause(ctx),
+	)
+}
+
+func (p *Provider[T]) initialize(current *state[T]) {
 	defer func() {
 		if value := recover(); value != nil {
-			s.panicked = true
-			s.panicValue = value
+			current.panicked = true
+			current.panicValue = value
 		}
 
-		s.settled.Store(true)
-		close(s.done)
+		current.settled.Store(true)
+		close(current.done)
 	}()
 
 	value, err := p.retrier.Do(context.Background(), p.factory)
 	if err != nil {
-		s.err = err
+		current.err = err
 
 		return
 	}
 
-	s.value = value
+	current.value = value
 }

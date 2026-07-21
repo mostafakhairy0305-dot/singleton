@@ -9,10 +9,10 @@ package backoffretry
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/cenkalti/backoff/v7"
-
 	"github.com/mostafa-khairy-zofirm/singleton/internal/domain"
 	"github.com/mostafa-khairy-zofirm/singleton/internal/ports"
 )
@@ -59,7 +59,7 @@ var _ ports.Retrier[int] = (*Retrier[int])(nil)
 //
 // On failure it returns the zero T and a *domain.InitError whose Reason comes
 // from the policy's own stop condition rather than from the operation's error.
-func (r *Retrier[T]) Do(ctx context.Context, op ports.Operation[T]) (T, error) {
+func (r *Retrier[T]) Do(ctx context.Context, operation ports.Operation[T]) (T, error) {
 	cancel := func() {}
 
 	if r.cfg.Timeout > 0 {
@@ -81,32 +81,12 @@ func (r *Retrier[T]) Do(ctx context.Context, op ports.Operation[T]) (T, error) {
 		func() (T, error) {
 			attempt++
 
-			value, err := op(ctx)
-			if err == nil {
-				return value, nil
-			}
-
-			var permanent *domain.PermanentError
-			if errors.As(err, &permanent) {
-				return value, backoff.Permanent(permanent.Err)
-			}
-
-			return value, err
+			return runOnce(ctx, operation)
 		},
 		backoff.WithBackOff(policy),
 		backoff.WithMaxTries(r.cfg.MaxAttempts),
 		backoff.WithMaxElapsedTime(0),
-		backoff.WithNotify(func(err error, delay time.Duration) {
-			if r.cfg.Observer == nil {
-				return
-			}
-
-			r.cfg.Observer(domain.RetryEvent{
-				Attempt:   attempt,
-				Err:       err,
-				NextDelay: delay,
-			})
-		}),
+		backoff.WithNotify(r.notify(&attempt)),
 	)
 	if err != nil {
 		var zero T
@@ -115,6 +95,45 @@ func (r *Retrier[T]) Do(ctx context.Context, op ports.Operation[T]) (T, error) {
 	}
 
 	return value, nil
+}
+
+// runOnce performs a single attempt, translating an error marked with
+// [domain.Permanent] into the retry engine's own stop signal.
+func runOnce[T any](ctx context.Context, operation ports.Operation[T]) (T, error) {
+	value, err := operation(ctx)
+	if err == nil {
+		return value, nil
+	}
+
+	var permanent *domain.PermanentError
+	if errors.As(err, &permanent) {
+		// Retry finds the marker with errors.As and replaces this error with a
+		// RetryError carrying permanent.Err, so this message never reaches a
+		// caller.
+		return value, fmt.Errorf(
+			"backoffretry: stop retrying: %w",
+			backoff.Permanent(permanent.Err),
+		)
+	}
+
+	return value, err
+}
+
+// notify builds the callback the retry engine invokes between attempts. It
+// reads attempt through a pointer because the counter advances on every
+// attempt, after this callback is built.
+func (r *Retrier[T]) notify(attempt *uint) func(error, time.Duration) {
+	return func(err error, delay time.Duration) {
+		if r.cfg.Observer == nil {
+			return
+		}
+
+		r.cfg.Observer(domain.RetryEvent{
+			Attempt:   *attempt,
+			Err:       err,
+			NextDelay: delay,
+		})
+	}
 }
 
 func translate(err error) error {

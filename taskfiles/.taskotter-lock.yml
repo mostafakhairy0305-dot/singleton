@@ -15,8 +15,8 @@ configuration:
     - zizmor
     - shellcheck
     - adrs
-  node_package_manager: ""
-  node_version_manager: ""
+  node_package_manager: ''
+  node_version_manager: ''
   includes_doc: true
   sync_root: true
 resolved_modules:

@@ -14,6 +14,21 @@ const (
 	defaultMaxInterval     = 5 * time.Second
 )
 
+var (
+	errZeroMaxAttempts = errors.New(
+		"singleton: max attempts must be greater than zero",
+	)
+	errNegativeTimeout = errors.New(
+		"singleton: initialization timeout cannot be negative",
+	)
+	errZeroInitialInterval = errors.New(
+		"singleton: initial retry interval must be greater than zero",
+	)
+	errMaxIntervalBelowInitial = errors.New(
+		"singleton: maximum retry interval cannot be less than the initial interval",
+	)
+)
+
 // Option configures a [Provider].
 //
 // Its implementation is unexported so callers cannot depend on the retry
@@ -33,6 +48,9 @@ func defaultConfig() config {
 			Timeout:         defaultTimeout,
 			InitialInterval: defaultInitialInterval,
 			MaxInterval:     defaultMaxInterval,
+
+			// No observer until [WithRetryObserver] registers one.
+			Observer: nil,
 		},
 	}
 }
@@ -40,15 +58,15 @@ func defaultConfig() config {
 // WithMaxAttempts sets the total number of attempts, including the first, so
 // WithMaxAttempts(1) never retries. The default is 5.
 //
-// [New] reports an error if n is zero.
-func WithMaxAttempts(n uint) Option {
+// [New] reports an error if attempts is zero.
+func WithMaxAttempts(attempts uint) Option {
 	return Option{
-		apply: func(c *config) error {
-			if n == 0 {
-				return errors.New("singleton: max attempts must be greater than zero")
+		apply: func(cfg *config) error {
+			if attempts == 0 {
+				return errZeroMaxAttempts
 			}
 
-			c.retry.MaxAttempts = n
+			cfg.retry.MaxAttempts = attempts
 
 			return nil
 		},
@@ -63,12 +81,12 @@ func WithMaxAttempts(n uint) Option {
 // negative.
 func WithInitializationTimeout(timeout time.Duration) Option {
 	return Option{
-		apply: func(c *config) error {
+		apply: func(cfg *config) error {
 			if timeout < 0 {
-				return errors.New("singleton: initialization timeout cannot be negative")
+				return errNegativeTimeout
 			}
 
-			c.retry.Timeout = timeout
+			cfg.retry.Timeout = timeout
 
 			return nil
 		},
@@ -83,17 +101,17 @@ func WithInitializationTimeout(timeout time.Duration) Option {
 // initial.
 func WithRetryInterval(initial, maximum time.Duration) Option {
 	return Option{
-		apply: func(c *config) error {
+		apply: func(cfg *config) error {
 			if initial <= 0 {
-				return errors.New("singleton: initial retry interval must be greater than zero")
+				return errZeroInitialInterval
 			}
 
 			if maximum < initial {
-				return errors.New("singleton: maximum retry interval cannot be less than the initial interval")
+				return errMaxIntervalBelowInitial
 			}
 
-			c.retry.InitialInterval = initial
-			c.retry.MaxInterval = maximum
+			cfg.retry.InitialInterval = initial
+			cfg.retry.MaxInterval = maximum
 
 			return nil
 		},
@@ -110,8 +128,8 @@ func WithRetryInterval(initial, maximum time.Duration) Option {
 // it.
 func WithRetryObserver(observer func(RetryEvent)) Option {
 	return Option{
-		apply: func(c *config) error {
-			c.retry.Observer = observer
+		apply: func(cfg *config) error {
+			cfg.retry.Observer = observer
 
 			return nil
 		},
