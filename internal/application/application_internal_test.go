@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mostafa-khairy-zofirm/singleton/internal/ports"
+	"github.com/mostafakhairy0305-dot/singleton/internal/ports"
 )
 
 var (

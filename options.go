@@ -4,7 +4,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/mostafa-khairy-zofirm/singleton/internal/adapters/backoffretry"
+	"github.com/mostafakhairy0305-dot/singleton/internal/adapters/backoffretry"
 )
 
 const (

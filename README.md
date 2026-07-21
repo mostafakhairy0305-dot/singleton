@@ -50,11 +50,11 @@ init ctx    ──────────►  factory, retried, bounded by With
 ## Install
 
 ```sh
-go get github.com/mostafa-khairy-zofirm/singleton
+go get github.com/mostafakhairy0305-dot/singleton
 ```
 
 ```go
-import "github.com/mostafa-khairy-zofirm/singleton"
+import "github.com/mostafakhairy0305-dot/singleton"
 ```
 
 **Requires Go 1.24+** (generic type aliases). One dependency: [`cenkalti/backoff/v7`](https://github.com/cenkalti/backoff), fully quarantined behind an internal adapter — none of its types appear in this package's API.
@@ -69,7 +69,7 @@ import (
     "fmt"
     "time"
 
-    "github.com/mostafa-khairy-zofirm/singleton"
+    "github.com/mostafakhairy0305-dot/singleton"
     "github.com/redis/go-redis/v9"
 )
 

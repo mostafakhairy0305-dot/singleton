@@ -35,10 +35,10 @@ import (
 	"context"
 	"errors"
 
-	"github.com/mostafa-khairy-zofirm/singleton/internal/adapters/backoffretry"
-	"github.com/mostafa-khairy-zofirm/singleton/internal/application"
-	"github.com/mostafa-khairy-zofirm/singleton/internal/domain"
-	"github.com/mostafa-khairy-zofirm/singleton/internal/ports"
+	"github.com/mostafakhairy0305-dot/singleton/internal/adapters/backoffretry"
+	"github.com/mostafakhairy0305-dot/singleton/internal/application"
+	"github.com/mostafakhairy0305-dot/singleton/internal/domain"
+	"github.com/mostafakhairy0305-dot/singleton/internal/ports"
 )
 
 // Factory creates the singleton value.

@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v7"
-	"github.com/mostafa-khairy-zofirm/singleton/internal/domain"
-	"github.com/mostafa-khairy-zofirm/singleton/internal/ports"
+	"github.com/mostafakhairy0305-dot/singleton/internal/domain"
+	"github.com/mostafakhairy0305-dot/singleton/internal/ports"
 )
 
 const (
